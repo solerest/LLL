@@ -5,7 +5,16 @@ on:
     # Runs at minute 7 of every hour (avoids the exact-hour pile-up on GitHub's
     # scheduler, which can delay :00 runs).
     - cron: "7 * * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "single = post just the next row (normal). all = fire every remaining row right now, back to back, then resume hourly."
+        required: false
+        default: "single"
+        type: choice
+        options:
+          - single
+          - all
 
 permissions:
   contents: write
@@ -31,9 +40,10 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Post next message + image to Discord
+      - name: Post message(s) + image(s) to Discord
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          POST_MODE: ${{ github.event.inputs.mode || 'single' }}
         run: python scripts/post_to_discord.py
 
       - name: Commit updated pointer
