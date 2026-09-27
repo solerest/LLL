@@ -1,0 +1,49 @@
+name: Hourly Discord post
+
+on:
+  schedule:
+    # Runs at minute 7 of every hour (avoids the exact-hour pile-up on GitHub's
+    # scheduler, which can delay :00 runs).
+    - cron: "7 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hourly-discord-post
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Post next message + image to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python scripts/post_to_discord.py
+
+      - name: Commit updated pointer
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- state.json; then
+            git add state.json
+            git commit -m "chore: advance post pointer [skip ci]"
+            git push
+          else
+            echo "state.json unchanged, nothing to commit"
+          fi
