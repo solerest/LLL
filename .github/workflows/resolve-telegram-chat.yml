@@ -33,8 +33,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if ! git diff --quiet -- telegram_chat_candidates.json; then
-            git add telegram_chat_candidates.json
+          git add telegram_chat_candidates.json
+          if ! git diff --cached --quiet; then
             git commit -m "chore: update telegram_chat_candidates.json [skip ci]"
             git push
           else
