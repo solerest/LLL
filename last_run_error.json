@@ -1,6 +1,0 @@
-{
-  "row_index": 15,
-  "platform": "telegram",
-  "http_status": 400,
-  "response_text": "{\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: can't parse entities: Can't find end of the entity starting at byte offset 83\"}"
-}
