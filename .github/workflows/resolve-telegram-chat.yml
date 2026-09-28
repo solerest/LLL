@@ -29,6 +29,7 @@ jobs:
         run: python scripts/resolve_telegram_chat.py
 
       - name: Commit result
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
