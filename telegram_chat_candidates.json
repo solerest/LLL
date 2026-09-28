@@ -1,4 +1,12 @@
 {
   "ok": true,
-  "chats": []
+  "chats": [
+    {
+      "id": -1004476615564,
+      "type": "channel",
+      "title": "L\u2764\ufe0f",
+      "username": null,
+      "seen_via": "channel_post"
+    }
+  ]
 }
