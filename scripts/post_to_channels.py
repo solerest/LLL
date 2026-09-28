@@ -34,6 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CSV_PATH = ROOT / "POSTSBOT.csv"
 IMAGES_DIR = ROOT / "images"
 STATE_PATH = ROOT / "state.json"
+ERROR_PATH = ROOT / "last_run_error.json"
 
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
@@ -81,8 +82,40 @@ def save_index(idx):
     STATE_PATH.write_text(json.dumps({"index": idx}, indent=2) + "\n", encoding="utf-8")
 
 
+def clear_error():
+    if ERROR_PATH.exists():
+        ERROR_PATH.unlink()
+
+
+def write_error(row_idx, platform, status_code, response_text):
+    # response_text comes straight from Discord/Telegram's own reply body,
+    # which never echoes back the webhook URL or bot token, so this is safe
+    # to write to a file that gets committed to the (public) repo.
+    ERROR_PATH.write_text(
+        json.dumps(
+            {
+                "row_index": row_idx,
+                "platform": platform,
+                "http_status": status_code,
+                "response_text": (response_text or "")[:2000],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def image_mime(image_path):
     return CONTENT_TYPES.get(image_path.suffix.lower(), "application/octet-stream")
+
+
+class PostError(Exception):
+    def __init__(self, platform, status_code, text):
+        self.platform = platform
+        self.status_code = status_code
+        self.text = text
+        super().__init__(f"{platform} post failed ({status_code}): {text}")
 
 
 # ---------------------------------------------------------------- Discord --
@@ -105,7 +138,7 @@ def post_discord(row):
         resp = attempt()
 
     if resp.status_code not in (200, 204):
-        raise SystemExit(f"Discord webhook post failed ({resp.status_code}): {resp.text}")
+        raise PostError("discord", resp.status_code, resp.text)
 
 
 # --------------------------------------------------------------- Telegram --
@@ -139,7 +172,7 @@ def post_telegram(row):
 
     ok = resp.status_code == 200 and resp.json().get("ok")
     if not ok:
-        raise SystemExit(f"Telegram post failed ({resp.status_code}): {resp.text}")
+        raise PostError("telegram", resp.status_code, resp.text)
 
 
 # ------------------------------------------------------------------ core --
@@ -166,8 +199,18 @@ def post_single(rows, total):
     idx = load_index(total)
     row = rows[idx]
     print(f"Posting row {idx + 1}/{total} -> image={row['image']!r}")
-    post_row(row)
+    try:
+        post_row(row)
+    except PostError as exc:
+        write_error(idx, exc.platform, exc.status_code, exc.text)
+        raise SystemExit(str(exc))
+    except requests.RequestException as exc:
+        # str(exc) can echo the request URL, which embeds the webhook/token,
+        # so only the exception type is ever written out or printed.
+        write_error(idx, "network", None, type(exc).__name__)
+        raise SystemExit(f"Network error posting row {idx + 1} ({type(exc).__name__})")
 
+    clear_error()
     next_idx = (idx + 1) % total
     save_index(next_idx)
     print(f"Posted OK. Next run will post row {next_idx + 1}/{total}.")
@@ -181,7 +224,20 @@ def post_all(rows, total):
     for count in range(total):
         row = rows[idx]
         print(f"[{count + 1}/{total}] Posting row {idx + 1}/{total} -> image={row['image']!r}")
-        post_row(row)
+        try:
+            post_row(row)
+        except PostError as exc:
+            write_error(idx, exc.platform, exc.status_code, exc.text)
+            raise SystemExit(
+                f"{exc} -- stopped after {count}/{total} rows this run; "
+                f"pointer is saved at row {idx + 1}, so the next run retries from here."
+            )
+        except requests.RequestException as exc:
+            write_error(idx, "network", None, type(exc).__name__)
+            raise SystemExit(
+                f"Network error posting row {idx + 1} ({type(exc).__name__}) -- "
+                f"stopped after {count}/{total} rows this run."
+            )
 
         next_idx = (idx + 1) % total
         save_index(next_idx)  # save progress after every post, in case of a mid-run failure
@@ -190,6 +246,7 @@ def post_all(rows, total):
         if count < total - 1:
             time.sleep(BURST_DELAY_SECONDS)
 
+    clear_error()
     print(
         f"Burst complete: posted all {total} rows. "
         f"Pointer is back at row {idx + 1}/{total}; next hourly run continues from there."
