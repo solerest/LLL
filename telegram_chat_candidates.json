@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "TELEGRAM_BOT_TOKEN is not set"
+}
