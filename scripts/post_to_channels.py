@@ -143,15 +143,21 @@ def post_discord(row):
 
 # --------------------------------------------------------------- Telegram --
 
-def discord_markdown_to_telegram(text):
-    # Discord uses **bold**; Telegram's legacy Markdown mode uses *bold*.
-    return re.sub(r"\*\*(.+?)\*\*", r"*\1*", text)
+def discord_to_telegram_caption(text):
+    # The row data contains stray, unmatched "*" characters in some names
+    # (e.g. "*PFHÀ"), which breaks Telegram's Markdown entity parser ("can't
+    # find end of the entity..."). Discord's "**@everyone**" also has no
+    # real equivalent on Telegram (channel posts already notify everyone;
+    # there's no per-post @everyone mention). Simplest robust fix: send
+    # plain text, just unwrapping "**word**" -> "word" with no parse_mode,
+    # so no character in the message can ever break parsing.
+    return re.sub(r"\*\*(.+?)\*\*", r"\1", text)
 
 
 def post_telegram(row):
     image_path = IMAGES_DIR / row["image"]
     mime = image_mime(image_path)
-    caption = discord_markdown_to_telegram(row["message"])[:1024]
+    caption = discord_to_telegram_caption(row["message"])[:1024]
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
 
     def attempt():
@@ -160,7 +166,6 @@ def post_telegram(row):
             data = {
                 "chat_id": TELEGRAM_CHAT_ID,
                 "caption": caption,
-                "parse_mode": "Markdown",
             }
             return requests.post(url, data=data, files=files, timeout=30)
 
