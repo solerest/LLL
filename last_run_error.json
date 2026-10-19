@@ -1,6 +1,0 @@
-{
-  "row_index": 4,
-  "platform": "discord",
-  "http_status": 503,
-  "response_text": "upstream connect error or disconnect/reset before headers. reset reason: connection termination"
-}
